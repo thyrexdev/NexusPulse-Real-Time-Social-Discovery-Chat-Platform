@@ -1,0 +1,5 @@
+enum ParticipantRole {
+    OWNER
+    ADMIN
+    MEMBER
+}
