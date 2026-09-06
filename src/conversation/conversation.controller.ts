@@ -1,119 +1,66 @@
-import type { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "@rizlax-org/shared";
-import type { IConversationService } from "./conversation.types.js";
-import { BadRequestError, ForbiddenError, NotFoundError } from "@rizlax-org/shared";
-import { logger } from "@rizlax-org/shared";
+import {
+  Controller,
+  Post,
+  Get,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { ConversationService } from './conversation.service';
+import { CreateConversationDto, AddParticipantDto } from './dto/conversation.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 
-class ConversationController {
-  private conversationService: IConversationService;
+@Controller('conversations')
+@UseGuards(JwtAuthGuard)
+export class ConversationController {
+  constructor(private readonly conversationService: ConversationService) {}
 
-  constructor(conversationService: IConversationService) {
-    this.conversationService = conversationService;
-  }
-
-  private validateUserAccess(
-    conversation: { participants?: { userId: string }[] } | null,
-    userId: string
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  async createConversation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateConversationDto,
   ) {
-    if (!conversation) {
-      throw new NotFoundError("Conversation not found");
-    }
-
-    const participants = conversation.participants ?? [];
-    const isParticipant = participants.some(
-      (participant: { userId: string }) => participant.userId === userId
-    );
-
-    if (!isParticipant) {
-      throw new ForbiddenError("Access denied");
-    }
+    return this.conversationService.createConversation(user.userId, dto);
   }
 
-  public createConversation = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const { participantIds, title } = req.body;
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async getUserConversations(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversationService.getUserConversations(user.userId);
+  }
 
-      if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
-        throw new BadRequestError("participantIds must be a non-empty array");
-      }
+  @Get(':id')
+  @HttpCode(HttpStatus.OK)
+  async getConversationById(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversationService.getConversationById(id, user.userId);
+  }
 
-      if (!participantIds.includes(req.user!.userId)) {
-        participantIds.push(req.user!.userId);
-      }
+  @Post(':id/participants')
+  @HttpCode(HttpStatus.CREATED)
+  async addParticipant(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AddParticipantDto,
+  ) {
+    return this.conversationService.addParticipant(id, user.userId, dto);
+  }
 
-      const conversation = await this.conversationService.createConversation({
-        participantIds,
-        title,
-      });
-
-      logger.info({ conversationId: conversation.id, userId: req.user!.userId }, "Conversation created via API");
-      return res.status(201).json(conversation);
-    } catch (err) {
-      next(err);
-    }
-  };
-
-  public getConversationById = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const id = req.params.id as string;
-      const conversation = await this.conversationService.getConversationById(id);
-      this.validateUserAccess(conversation, req.user!.userId);
-      return res.status(200).json(conversation);
-    } catch (err) {
-      next(err);
-    }
-  };
-
-  public getUserConversations = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const conversations = await this.conversationService.getUserConversations(req.user!.userId);
-      return res.status(200).json(conversations);
-    } catch (err) {
-      next(err);
-    }
-  };
-
-  public getByProposalId = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      const proposalId = req.params.proposalId as string;
-      const participantIds = req.query.participantIds as string[] | string | undefined;
-      const ids: string[] = Array.isArray(participantIds)
-        ? participantIds
-        : participantIds
-        ? [participantIds]
-        : [];
-
-      if (!ids.includes(req.user!.userId)) {
-        ids.push(req.user!.userId);
-      }
-
-      const { conversation, created } = await this.conversationService.getOrCreateByProposalId({
-        proposalId,
-        participantIds: ids,
-      });
-
-      logger.info({ proposalId, conversationId: conversation.id, created, userId: req.user!.userId }, "getByProposalId");
-      return res.status(created ? 201 : 200).json(conversation);
-    } catch (err) {
-      next(err);
-    }
-  };
+  @Delete(':id/participants/:userId')
+  @HttpCode(HttpStatus.OK)
+  async removeParticipant(
+    @Param('id') id: string,
+    @Param('userId') targetUserId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversationService.removeParticipant(id, user.userId, targetUserId);
+  }
 }
-
-export default ConversationController;

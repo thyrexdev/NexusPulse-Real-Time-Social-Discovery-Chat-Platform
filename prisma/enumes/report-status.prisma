@@ -1,0 +1,6 @@
+enum ReportStatus {
+    PENDING
+    REVIEWED
+    DISMISSED
+    ACTION_TAKEN
+}

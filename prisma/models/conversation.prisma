@@ -1,11 +1,14 @@
 model Conversation {
     id            String           @id @default(uuid())
     type          ConversationType
+    title         String?
+    avatar        String?
     lastMessageId String?
     lastMessageAt DateTime?
 
     participants ConversationParticipant[]
     messages     Message[]
+    matchSession MatchSession?
     createdAt    DateTime                  @default(now())
     updatedAt    DateTime                  @updatedAt
 

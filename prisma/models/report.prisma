@@ -1,0 +1,17 @@
+model Report {
+    id             String       @id @default(uuid())
+    reporterId     String
+    reportedUserId String
+    conversationId String?
+    reason         String
+    details        String?
+    status         ReportStatus @default(PENDING)
+    createdAt      DateTime     @default(now())
+
+    reporter     User @relation("ReportsSubmitted", fields: [reporterId], references: [id], onDelete: Cascade)
+    reportedUser User @relation("ReportsReceived", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+    @@index([reporterId])
+    @@index([reportedUserId])
+    @@index([status])
+}

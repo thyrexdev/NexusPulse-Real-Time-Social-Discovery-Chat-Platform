@@ -1,0 +1,13 @@
+model Block {
+    id            String   @id @default(uuid())
+    blockerId     String
+    blockedUserId String
+    createdAt     DateTime @default(now())
+
+    blocker     User @relation("BlocksInitiated", fields: [blockerId], references: [id], onDelete: Cascade)
+    blockedUser User @relation("BlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+    @@unique([blockerId, blockedUserId])
+    @@index([blockerId])
+    @@index([blockedUserId])
+}

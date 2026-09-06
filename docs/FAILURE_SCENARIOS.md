@@ -1,0 +1,20 @@
+# Real-Time Failure Scenarios & Resilience Matrix
+
+This document catalogs critical failure modes in the NexusPulse real-time platform, documenting the detection mechanism, system behavior, automated recovery, and consistency guarantees for each scenario.
+
+---
+
+| # | Failure Scenario | Detection Mechanism | System Behavior | Recovery Strategy | Consistency Guarantee |
+| :- | :--- | :--- | :--- | :--- | :--- |
+| **1** | **Database Unavailable** | Prisma connection pool timeout / error event | Gateway catches DB error; emits error ACK `{ status: 'error', message: 'Storage unavailable' }` | Automatic Prisma reconnection retry; in-flight operations aborted safely | **Strict Consistency**: No uncommitted in-memory states allowed to persist. |
+| **2** | **Redis Node Crash** | Socket.io Redis adapter error callback | Gateway logs warning; gracefully falls back to local in-memory Socket.io adapter without process crash | When Redis recovers, adapter reconnects automatically | **Local Continuity**: Single-instance messaging continues uninterrupted. |
+| **3** | **WebSocket Server Process Dies** | Operating System / Process Manager (PM2/Docker) | All active TCP sockets terminate immediately | Client Socket.io exponential backoff reconnects to replacement instance | **Client Resync**: Client fetches active session and missed messages upon reconnection. |
+| **4** | **Disconnect During Queue Waiting** | Socket.io `disconnect` event on Gateway | Gateway calls `matchQueue.removeBySocketId(socketId)` | Candidate ticket removed from queue; no peer can match with an offline socket | **Zero Ghost Matches**: Sockets that drop are never paired. |
+| **5** | **Disconnect During Active Chat** | Socket.io `disconnect` event | Gateway invokes `handleUserDisconnect()`; detects user's active session | Session marked `status: ENDED, endReason: DISCONNECTED`; partner receives `peer:disconnected` | **Terminal State**: Partner is not left stranded in an active room. |
+| **6** | **Concurrent Skip Race (Alice & Bob)** | Simultaneous `match:skip` events | Both hit `endSession`; first update commits; second detects `status === ENDED` | Repository returns existing ended session idempotently without error | **Idempotent Transition**: No duplicate DB writes or conflicting reasons. |
+| **7** | **Network Reconnect / Duplicate Message** | Inbound `message:send` with existing `clientMessageId` | `MessageService` matches key in 60s sliding idempotency cache | Bypasses database insert; immediately returns original message in ACK | **Exactly-Once Storage**: Exactly 1 database record created. |
+| **8** | **Partner Blocks Mid-Chat** | `moderation:block` event | Blocker/blocked pair recorded in DB; active session terminated | Target peer receives `peer:ended` (`reason: BLOCKED`); room disbanded | **Mutual Exclusion**: Pair can never be matched again in matchmaking. |
+| **9** | **Rapid Page Refresh / Multiple Tabs** | `PresenceService` multi-socket map tracking | Sockets added/removed to `userSockets.get(userId)` | `user:offline` only emitted when socket count drops to zero | **Hysteresis Stability**: Online status remains stable across tabs. |
+| **10** | **Rate Limit Abuse (Spam Skip / Flooding)** | In-gateway per-socket token bucket / timestamp filter | Event rejected; `{ status: 'error', code: 'RATE_LIMITED' }` emitted | Socket must wait until window expires before next action is processed | **DoS Protection**: Prevents resource starvation on DB and CPU. |
+| **11** | **Multi-Socket Disconnect (Tab Close)** | Socket disconnect on Gateway | `PresenceService` checks remaining socket count; passes `hasRemainingSockets` | Match session preserved if user has other open tabs; partner is NOT disconnected prematurely | **Session Continuity**: Multi-device users don't lose chat on background tab close. |
+| **12** | **Simultaneous Concurrent Duplicate Message Burst** | 10 concurrent requests with identical `clientMessageId` | `MessageService` detects active promise in `inFlightRequests` map | Callers 2-10 join active promise; await single database transaction execution | **Single-Insert Monotonicity**: Exactly 1 database row written. |

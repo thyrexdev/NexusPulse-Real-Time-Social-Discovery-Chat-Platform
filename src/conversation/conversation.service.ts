@@ -1,209 +1,200 @@
-import { prisma } from "../../db/prisma.js";
-import { type Conversation, Prisma } from "@prisma/client";
-import type { CreateConversationDTO, GetByProposalIdDTO, GetOrCreateByProposalIdResult } from "./conversation.types.js";
-import { NotFoundError, logger, capturePrismaError } from "@rizlax-org/shared";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
+import { ConversationRepository, ConversationWithDetails } from './conversation.repository';
+import { UserRepository } from '../user/user.repository';
+import { CreateConversationDto, AddParticipantDto } from './dto/conversation.dto';
+import { ConversationType, ParticipantRole } from '../../generated/prisma/client';
 
-type FullConversationById = Prisma.ConversationGetPayload<{
-  include: {
-    participants: true;
-    lastMessage: true;
-  };
-}>;
+@Injectable()
+export class ConversationService {
+  private readonly logger = new Logger(ConversationService.name);
 
-const uniqueParticipantIds = (participantIds: string[]) => [...new Set(participantIds)];
+  constructor(
+    private readonly conversationRepository: ConversationRepository,
+    private readonly userRepository: UserRepository,
+  ) {}
 
-const hasExactParticipants = (
-  conversation: { participants: { userId: string }[] },
-  participantIds: string[]
-) => {
-  const normalizedIds = uniqueParticipantIds(participantIds);
-  if (conversation.participants.length !== normalizedIds.length) {
-    return false;
-  }
+  async createConversation(
+    currentUserId: string,
+    dto: CreateConversationDto,
+  ): Promise<ConversationWithDetails> {
+    // Collect and deduplicate all participant IDs
+    const rawIds = [...dto.participantIds, currentUserId];
+    const uniqueIds = Array.from(new Set(rawIds));
 
-  const participantSet = new Set(conversation.participants.map((participant) => participant.userId));
-  return normalizedIds.every((participantId) => participantSet.has(participantId));
-};
+    // Validate users exist in database
+    const existingUsers = await this.userRepository.findManyByIds(uniqueIds);
+    if (existingUsers.length !== uniqueIds.length) {
+      const foundIds = new Set(existingUsers.map((u) => u.id));
+      const missingIds = uniqueIds.filter((id) => !foundIds.has(id));
+      throw new NotFoundException(`One or more users not found: ${missingIds.join(', ')}`);
+    }
 
-class ConversationService {
-  public async createConversation(data: CreateConversationDTO): Promise<Conversation> {
-    try {
-      const participantIds = uniqueParticipantIds(data.participantIds);
-      const candidateConversations = await prisma.conversation.findMany({
-        where: {
-          AND: participantIds.map((userId) => ({
-            participants: {
-              some: { userId },
-            },
-          })),
-        },
-        include: {
-          participants: true,
-        },
-      });
-      const existingConversation = candidateConversations.find((conversation: FullConversationById) =>
-        hasExactParticipants(conversation, participantIds)
-      );
+    if (dto.type === ConversationType.PRIVATE) {
+      // Must have exactly two distinct participants
+      if (uniqueIds.length !== 2) {
+        throw new BadRequestException(
+          'Private conversation must have exactly two distinct participants',
+        );
+      }
+
+      const otherUserId = uniqueIds.find((id) => id !== currentUserId)!;
+
+      // Check if private conversation already exists between these two users (Idempotent)
+      const existingConversation =
+        await this.conversationRepository.findPrivateConversationBetween(
+          currentUserId,
+          otherUserId,
+        );
 
       if (existingConversation) {
-        logger.info({ conversationId: existingConversation.id }, "Conversation already exists");
+        this.logger.log(
+          `Returning existing private conversation ${existingConversation.id} between ${currentUserId} and ${otherUserId}`,
+        );
         return existingConversation;
       }
 
-      const conversation = await prisma.conversation.create({
-        data: {
-          title: data.title,
-          participants: {
-            create: participantIds.map((userId) => ({
-              userId,
-            })),
-          },
-        },
-        include: {
-          participants: true,
-        },
+      // Create new private conversation
+      const conversation = await this.conversationRepository.create({
+        type: ConversationType.PRIVATE,
+        participants: [
+          { userId: currentUserId, role: ParticipantRole.MEMBER },
+          { userId: otherUserId, role: ParticipantRole.MEMBER },
+        ],
       });
 
-      logger.info({ conversationId: conversation.id }, "Conversation created");
+      this.logger.log(
+        `Created private conversation ${conversation.id} between ${currentUserId} and ${otherUserId}`,
+      );
       return conversation;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && (error as Prisma.PrismaClientKnownRequestError).code === "P2002") {
-        capturePrismaError(error, { service: 'chat-service' });
-        const participantIds = uniqueParticipantIds(data.participantIds);
-        const conflict = await prisma.conversation.findFirst({
-          where: {
-            AND: participantIds.map((userId) => ({
-              participants: { some: { userId } },
-            })),
-          },
-          include: { participants: true, lastMessage: true },
-        });
-        if (conflict && hasExactParticipants(conflict, participantIds)) {
-          logger.info({ conversationId: conflict.id }, "Resolved concurrent conversation creation race");
-          return conflict;
-        }
-      }
-      logger.error({ error }, "Failed to create conversation");
-      throw error;
     }
+
+    // Group conversation
+    if (uniqueIds.length < 2) {
+      throw new BadRequestException('Group conversation must contain at least 2 participants');
+    }
+
+    const participants = uniqueIds.map((userId) => ({
+      userId,
+      role: userId === currentUserId ? ParticipantRole.OWNER : ParticipantRole.MEMBER,
+    }));
+
+    const conversation = await this.conversationRepository.create({
+      type: ConversationType.GROUP,
+      title: dto.title || 'Group Chat',
+      avatar: dto.avatar,
+      participants,
+    });
+
+    this.logger.log(
+      `Created group conversation ${conversation.id} by ${currentUserId} with ${uniqueIds.length} participants`,
+    );
+    return conversation;
   }
 
-  public async getConversationById(id: string): Promise<FullConversationById | null> {
-    try {
-      const conversation = await prisma.conversation.findUnique({
-        where: { id },
-        include: {
-          participants: true,
-          lastMessage: true,
-        },
-      });
-
-      if (!conversation) {
-        throw new NotFoundError("Conversation not found");
-      }
-
-      return conversation;
-    } catch (error) {
-      logger.error({ conversationId: id, error }, "Failed to get conversation by ID");
-      throw error;
+  async getConversationById(
+    conversationId: string,
+    currentUserId: string,
+  ): Promise<ConversationWithDetails> {
+    const conversation = await this.conversationRepository.findById(conversationId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
     }
+
+    const isParticipant = conversation.participants.some(
+      (p) => p.userId === currentUserId,
+    );
+
+    if (!isParticipant) {
+      throw new ForbiddenException('You are not a participant in this conversation');
+    }
+
+    return conversation;
   }
 
-  public async getUserConversations(userId: string): Promise<FullConversationById[]> {
-    try {
-      const conversations = await prisma.conversation.findMany({
-        where: {
-          participants: {
-            some: {
-              userId,
-            },
-          },
-        },
-        include: {
-          participants: true,
-          lastMessage: true,
-        },
-        orderBy: {
-          updatedAt: "desc",
-        },
-      });
-
-      logger.info({ userId, count: conversations.length }, "Retrieved user conversations");
-      return conversations;
-    } catch (error) {
-      logger.error({ userId, error }, "Failed to get user conversations");
-      throw error;
-    }
+  async getUserConversations(currentUserId: string): Promise<ConversationWithDetails[]> {
+    return this.conversationRepository.findUserConversations(currentUserId);
   }
-  public async getOrCreateByProposalId(data: GetByProposalIdDTO): Promise<GetOrCreateByProposalIdResult> {
-    const { proposalId } = data;
-    const participantIds = uniqueParticipantIds(data.participantIds);
-    try {
-      const existing = await prisma.conversation.findUnique({
-        where: { proposalId },
-        include: { participants: true, lastMessage: true },
-      });
 
-      if (existing) {
-        const missingParticipantIds = participantIds.filter(
-          (participantId) =>
-            !existing.participants.some(
-              (participant: { userId: string }) => participant.userId === participantId
-            )
-        );
-
-        if (missingParticipantIds.length === 0) {
-          return { conversation: existing, created: false };
-        }
-
-        const repairedConversation = await prisma.conversation.update({
-          where: { id: existing.id },
-          data: {
-            participants: {
-              create: missingParticipantIds.map((userId) => ({ userId })),
-            },
-          },
-          include: { participants: true, lastMessage: true },
-        });
-
-        logger.info(
-          { proposalId, conversationId: existing.id, missingParticipantIds },
-          "Added missing participants to proposal conversation"
-        );
-
-        return { conversation: repairedConversation, created: false };
-      }
-
-      const conversation = await prisma.conversation.create({
-        data: {
-          proposalId,
-          participants: {
-            create: participantIds.map((userId) => ({ userId })),
-          },
-        },
-        include: { participants: true, lastMessage: true },
-      });
-
-      return { conversation, created: true };
-    } catch (error) {
-      // Two concurrent requests can both pass the findUnique check and then race
-      // to create — only one wins. The loser gets a P2002 unique constraint error.
-      // Recover by fetching the record the winner created.
-      if (error instanceof Prisma.PrismaClientKnownRequestError && (error as Prisma.PrismaClientKnownRequestError).code === "P2002") {
-        capturePrismaError(error, { service: 'chat-service' });
-        const existing = await prisma.conversation.findUnique({
-          where: { proposalId },
-          include: { participants: true, lastMessage: true },
-        });
-        if (existing) {
-          logger.info({ proposalId, conversationId: existing.id }, "Resolved race condition: returning existing conversation");
-          return { conversation: existing, created: false };
-        }
-      }
-      logger.error({ proposalId, error }, "Failed to get or create conversation by proposalId");
-      throw error;
+  async addParticipant(
+    conversationId: string,
+    currentUserId: string,
+    dto: AddParticipantDto,
+  ) {
+    const conversation = await this.conversationRepository.findById(conversationId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
     }
+
+    if (conversation.type !== ConversationType.GROUP) {
+      throw new BadRequestException('Cannot add participants to a private conversation');
+    }
+
+    // Verify requester has permission (OWNER or ADMIN)
+    const requester = conversation.participants.find((p) => p.userId === currentUserId);
+    if (!requester || (requester.role !== ParticipantRole.OWNER && requester.role !== ParticipantRole.ADMIN)) {
+      throw new ForbiddenException('Only conversation owners or admins can add participants');
+    }
+
+    // Verify target user exists
+    const targetUser = await this.userRepository.findById(dto.userId);
+    if (!targetUser) {
+      throw new NotFoundException('Target user not found');
+    }
+
+    // Check if already participant
+    const alreadyParticipant = conversation.participants.some((p) => p.userId === dto.userId);
+    if (alreadyParticipant) {
+      throw new ConflictException('User is already a participant in this conversation');
+    }
+
+    await this.conversationRepository.addParticipant(
+      conversationId,
+      dto.userId,
+      dto.role || ParticipantRole.MEMBER,
+    );
+
+    return this.getConversationById(conversationId, currentUserId);
+  }
+
+  async removeParticipant(
+    conversationId: string,
+    currentUserId: string,
+    targetUserId: string,
+  ) {
+    const conversation = await this.conversationRepository.findById(conversationId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    const isSelf = currentUserId === targetUserId;
+    const requester = conversation.participants.find((p) => p.userId === currentUserId);
+
+    if (!requester) {
+      throw new ForbiddenException('You are not a participant in this conversation');
+    }
+
+    if (!isSelf) {
+      if (conversation.type !== ConversationType.GROUP) {
+        throw new BadRequestException('Cannot remove participants from private conversations');
+      }
+      if (requester.role !== ParticipantRole.OWNER && requester.role !== ParticipantRole.ADMIN) {
+        throw new ForbiddenException('Only owners or admins can remove other participants');
+      }
+    }
+
+    const targetParticipant = conversation.participants.find((p) => p.userId === targetUserId);
+    if (!targetParticipant) {
+      throw new NotFoundException('Participant not found in conversation');
+    }
+
+    await this.conversationRepository.removeParticipant(conversationId, targetUserId);
+    return { success: true, message: isSelf ? 'Left conversation' : 'Participant removed' };
   }
 }
-
-export default ConversationService;

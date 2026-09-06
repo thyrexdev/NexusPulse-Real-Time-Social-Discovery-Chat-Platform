@@ -1,0 +1,7 @@
+enum SessionEndReason {
+    SKIPPED
+    DISCONNECTED
+    LEFT
+    REPORTED
+    TIMEOUT
+}

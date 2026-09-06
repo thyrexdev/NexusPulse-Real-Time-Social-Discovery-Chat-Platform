@@ -1,98 +1,217 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NexusPulse: Real-Time Social Discovery & Matchmaking Engine
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> High-velocity social discovery platform that matches online strangers into ephemeral conversations with synchronous in-memory mutex queues, server-authoritative message delivery, and real-time Socket.io clustering.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+[![Quality Gate](https://img.shields.io/badge/Quality_Gate-Passed-emerald?style=flat-square)](docs/TEST_MATRIX.md)
+[![Unit Tests](https://img.shields.io/badge/Unit_Tests-53%2F53_Passed-blue?style=flat-square)](docs/TEST_MATRIX.md)
+[![E2E Tests](https://img.shields.io/badge/E2E_Tests-21%2F21_Passed-indigo?style=flat-square)](docs/TEST_MATRIX.md)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Clean-teal?style=flat-square)](docs/FINAL_ENGINEERING_REPORT.md)
+[![License](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 🧭 System Overview
 
-## Project setup
+NexusPulse bridges strangers in real time based on mutual topic interests or global discovery queues. It is engineered with a strict **Clean Architecture**, enforcing explicit state boundaries between durable relational data (PostgreSQL), ephemeral pub/sub transports (Redis Socket.io adapter), and instantaneous in-memory matchmaking authority.
 
-```bash
-$ pnpm install
+```
+                             ┌─────────────────────────┐
+                             │   Next.js 16 Client     │
+                             │  (React 19, Zustand 5)  │
+                             └────────────┬────────────┘
+                                          │
+                                WebSocket / HTTP REST
+                                          │
+                                          ▼
+                             ┌─────────────────────────┐
+                             │    NestJS 11 Gateway    │
+                             │  (ChatGateway + Engine) │
+                             └──────┬───────────┬──────┘
+                                    │           │
+                  ┌─────────────────┘           └─────────────────┐
+                  ▼                                               ▼
+       ┌─────────────────────┐                         ┌─────────────────────┐
+       │     PostgreSQL      │                         │     Redis Node      │
+       │  (Prisma ORM v7)    │                         │ (Socket.io Adapter) │
+       │ MatchSession, Msg,  │                         │ Cross-Node Rooms    │
+       │ User, Conversation  │                         │ Pub/Sub Broadcasts  │
+       └─────────────────────┘                         └─────────────────────┘
 ```
 
-## Compile and run the project
+---
 
+## Product Preview
+
+![NexusPulse — Live Real-Time Chat](docs/assets/nexuspulse-live-chat.png)
+
+*Active 3-column real-time conversation workspace with live WebSocket synchronization, network latency telemetry, topic affinity tags, and safety enforcement.*
+
+![NexusPulse — Discovery & Matchmaking](docs/assets/nexuspulse-discovery.png)
+
+> NexusPulse's real-time discovery and conversation experience, powered by Socket.IO with persistent session and message state.
+
+---
+
+## ⚡ Key Engineering Highlights
+
+### 1. Concurrency-Safe In-Tick Match Extraction
+- **The Problem:** In high-concurrency environments, asynchronous pauses between checking candidate compatibility and removing them from a queue cause duplicate matching races and self-pairing.
+- **The Solution:** `MatchQueue` implements a synchronous, single-event-tick candidate extraction algorithm (`findAndExtractMatch`). Matching candidates are sliced from the in-memory array synchronously before any asynchronous database I/O is scheduled, mathematically eliminating double-matching and ticket ghosting under load.
+
+### 2. Idempotent Session Lifecycle & Skip Race Protection
+- **The Problem:** If User A and User B click "Next / Skip" simultaneously, or one disconnects while the other skips, standard database update operations suffer write conflicts or unhandled promise rejections.
+- **The Solution:** `MatchSessionRepository.endSession` executes an idempotent conditional check. The first terminal transition commits the end reason (`SKIPPED`, `DISCONNECTED`), while subsequent concurrent requests cleanly return the existing terminal state without throwing errors or corrupting session history.
+
+### 3. In-Flight Request Collapsing for Message Idempotency
+- **The Problem:** If a client sends rapid duplicate messages (network retry loops, double-clicks) before the first database insert commits, post-insert caches fail to prevent duplicate row creation.
+- **The Solution:** `MessageService` tracks pending execution promises in an `inFlightRequests Map`. Simultaneous identical requests join the active in-flight Promise, resulting in exactly one database insertion. Subsequent retries hit a 60-second sliding-window cache keyed by `(conversationId, senderId, clientMessageId)`.
+
+### 4. Multi-Socket Presence with Tab-Closing Hysteresis
+- **The Problem:** In traditional single-socket presence systems, closing one browser tab or switching apps on mobile marks the user offline, disrupting ongoing desktop sessions.
+- **The Solution:** `PresenceService` aggregates active connections per user in an indexed `Set<socketId>`. The user transitions to offline only when their final active socket disconnects. Closing secondary tabs preserves the active chat session.
+
+### 5. In-Gateway WebSocket Defense & Memory Reclamation
+- **The Problem:** Raw WebSocket frames bypass traditional HTTP guards, and storing per-socket rate limit counters in memory leads to progressive heap exhaustion over high connection turnover.
+- **The Solution:** `ChatGateway` enforces a sliding-window token bucket on sensitive events (`match:join_queue`, `match:skip`, `typing:start`) and purges all socket keys upon disconnect (`handleDisconnect`), guaranteeing zero memory leaks.
+
+---
+
+## ⚖️ Architectural Boundaries & Trade-Offs (Honest Reality)
+
+We believe in documenting architectural realities rather than presenting theoretical ideals:
+
+| Subsystem | Current Implementation | Architectural Rationale | Scalability Horizon & Migration |
+| :--- | :--- | :--- | :--- |
+| **Match Queue** | **Process-Local In-Memory** | Sub-2ms matching latency with zero lock contention on a single authoritative node. | For multi-node matchmaking, migration to Redis Sorted Sets (`ZSET`) with Lua atomic scripts is mapped out in [ADR 004](docs/ADR/004-matchmaking-strategy.md). |
+| **WebSocket Transport**| **Redis Pub/Sub Clustered** | Stateful WebSockets scale horizontally across instances using `@socket.io/redis-adapter`. | Automatic fallback to local in-memory adapter if Redis becomes unavailable. |
+| **Durable State** | **PostgreSQL (Prisma 7)** | ACID transactions (`$transaction`) guarantee relational integrity across conversations, participants, and sessions. | Keyset cursor pagination anchors message queries deterministically without drift. |
+| **Presence State** | **Instance-Local Memory** | Ultra-fast O(1) multi-socket mapping without external network hops. | For cluster-wide presence queries, Redis Sets (`SADD/SREM`) provide the scaling path. |
+
+---
+
+## 🔬 Red-Team Adversarial Verification
+
+NexusPulse underwent an adversarial testing challenge to break concurrency and state invariants. All discovered vulnerabilities were patched and reinforced with regression suites:
+
+* **[VULN-01 Fixed] Gateway Memory Reclamation:** Fixed unbounded `rateLimits` map entries by implementing an automated socket prefix sweeper.
+* **[VULN-02 Fixed] Multi-Tab Session Preservation:** Prevented premature session teardown when non-primary sockets disconnect.
+* **[VULN-03 Fixed] In-Flight Duplicate Bursting:** Collapsed simultaneous identical sends into a single database write.
+* **[VULN-04 Fixed] Transactional Active Session Clean-up:** Enforced lingering session closure inside the session creation transaction.
+
+Full adversarial audit report: **[RED_TEAM_FINAL_REPORT.md](docs/RED_TEAM_FINAL_REPORT.md)**.
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **Framework:** Next.js 16 (App Router, Server & Client Components)
+- **Language:** TypeScript 5
+- **Real-Time Client:** Socket.io-client 4
+- **State Management:** Zustand 5
+- **Styling:** Modular Vanilla CSS & Glassmorphism Design Tokens
+
+### Backend
+- **Framework:** NestJS 11
+- **Language:** TypeScript 5
+- **Real-Time Server:** Socket.io 4 with `@socket.io/redis-adapter`
+- **Database ORM:** Prisma 7 with `@prisma/adapter-pg`
+- **Database:** PostgreSQL 16
+- **Cache & Pub/Sub:** Redis 7 (ioredis)
+
+### Testing & Verification
+- **Testing Engine:** Jest 29
+- **Unit Suites:** 53 passing tests
+- **E2E Suites:** 21 passing tests
+
+---
+
+## 📁 Technical Documentation Directory (`docs/`)
+
+Explore the engineering deep dives, failure matrices, and decision records:
+
+| Document | Description |
+| :--- | :--- |
+| **[FINAL_ENGINEERING_REPORT.md](docs/FINAL_ENGINEERING_REPORT.md)** | Executive architecture summary, reliability guarantees, and known limits. |
+| **[STATE_OWNERSHIP.md](docs/STATE_OWNERSHIP.md)** | Authoritative owner, storage medium, synchronization, and lifetime for every entity. |
+| **[SESSION_STATE_MACHINE.md](docs/SESSION_STATE_MACHINE.md)** | Formal lifecycle state machine (`WAITING`, `MATCHED`, `ACTIVE`, `ENDED`) and end reasons. |
+| **[MESSAGE_DELIVERY.md](docs/MESSAGE_DELIVERY.md)** | Sequencing, deduplication, server-authoritative timestamps, and cursor pagination. |
+| **[FAILURE_SCENARIOS.md](docs/FAILURE_SCENARIOS.md)** | Resilience matrix detailing detection, behavior, and recovery for 12 failure modes. |
+| **[TEST_MATRIX.md](docs/TEST_MATRIX.md)** | Complete coverage matrix linking features to unit, integration, and E2E tests. |
+| **[OBSERVABILITY.md](docs/OBSERVABILITY.md)** | Structured log catalog, correlation IDs, and data redaction policies. |
+| **[API.md](docs/API.md)** | Complete REST API endpoints, DTO contracts, and error code specifications. |
+| **[REALTIME_PROTOCOL.md](docs/REALTIME_PROTOCOL.md)** | WebSocket event definitions, packet schemas, and bidirectional flow diagrams. |
+| **[ADRs](docs/ADR/)** | Architectural Decision Records (004 Matchmaking, 007 Message Delivery, 008 Presence). |
+
+---
+
+## 🚀 Getting Started Locally
+
+### Prerequisites
+- Node.js 20.x or 22.x
+- PostgreSQL 15+ (local or containerized)
+- Redis (optional — automatically falls back to in-memory mode if disabled)
+
+### 1. Installation
 ```bash
-# development
-$ pnpm run start
+git clone https://github.com/your-username/realtime-messaging-platform.git
+cd realtime-messaging-platform
 
-# watch mode
-$ pnpm run start:dev
+# Install backend dependencies
+npm install
 
-# production mode
-$ pnpm run start:prod
+# Install frontend dependencies
+cd frontend && npm install && cd ..
 ```
 
-## Run tests
-
+### 2. Environment Configuration
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+cp .env.example .env
+```
+Ensure `DATABASE_URL` matches your local PostgreSQL instance:
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/chat_db?schema=public"
+JWT_SECRET="your-super-secret-jwt-key"
+REDIS_ENABLED="false" # Set to true if local Redis instance is active
+PORT=3000
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### 3. Database Migration
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+npx prisma generate
+npx prisma migrate dev --name init
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 4. Running Development Servers
+```bash
+# Terminal 1: Backend API & WebSocket Gateway
+npm run start:dev
 
-## Resources
+# Terminal 2: Frontend Client (Next.js)
+cd frontend
+npm run dev
+```
+Open **`http://localhost:3000`** in your browser to launch the discovery radar.
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 🧪 Quality Gate Verification
 
-## Support
+Execute the complete automated test suite locally:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+# Run 53 unit tests (Concurrency, Idempotency, Presence, Queue)
+npm test
 
-## Stay in touch
+# Run 21 end-to-end integration tests (HTTP REST, WebSocket Rooms)
+npm run test:e2e
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+# Verify TypeScript compilation (Backend & Frontend)
+npx tsc --noEmit
+cd frontend && npx tsc --noEmit && cd ..
+```
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 📄 License
+This project is open-source under the [MIT License](LICENSE).

@@ -1,0 +1,7 @@
+enum MatchStatus {
+    WAITING
+    MATCHED
+    CONNECTING
+    ACTIVE
+    ENDED
+}

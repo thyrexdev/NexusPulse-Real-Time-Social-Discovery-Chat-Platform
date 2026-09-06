@@ -9,6 +9,13 @@ model User {
     participants ConversationParticipant[]
     messages     Message[]
 
+    matchSessionsAsUser1 MatchSession[] @relation("MatchUser1")
+    matchSessionsAsUser2 MatchSession[] @relation("MatchUser2")
+    reportsSubmitted     Report[]       @relation("ReportsSubmitted")
+    reportsReceived      Report[]       @relation("ReportsReceived")
+    blocksInitiated      Block[]        @relation("BlocksInitiated")
+    blocksReceived       Block[]        @relation("BlocksReceived")
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 }
