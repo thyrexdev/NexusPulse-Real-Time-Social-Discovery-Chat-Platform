@@ -1,7 +1,20 @@
-# compiled output
-/dist
-/node_modules
-/build
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Compiled outputs
+dist/
+**/dist/
+build/
+**/build/
+.next/
+**/.next/
+out/
+**/out/
+
+# Generated Prisma Client
+generated/
+**/generated/
 
 # Logs
 logs
@@ -10,53 +23,34 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-lerna-debug.log*
 
-# OS
+# OS & Temp
 .DS_Store
+.temp
+.tmp
 
-# Tests
-/coverage
-/.nyc_output
+# Tests & Coverage
+coverage/
+**/coverage/
+.nyc_output
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
+# IDEs
+.idea/
 *.sublime-workspace
-
-# IDE - VSCode
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
 
-# dotenv environment variable files
+# Environment Variables
 .env
-.env.development.local
-.env.test.local
-.env.production.local
 .env.local
+.env.*.local
+backend/.env
+frontend/.env
+frontend/.env.local
 
-# temp directory
-.temp
-.tmp
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Diagnostic reports (https://nodejs.org/api/report.html)
-report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-
-/generated/prisma
-
-# Private study and interview notes
+# Private study & interview notes
 /private
 private/

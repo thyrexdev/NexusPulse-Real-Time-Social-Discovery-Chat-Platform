@@ -157,41 +157,40 @@ Explore the engineering deep dives, failure matrices, and decision records:
 git clone https://github.com/your-username/realtime-messaging-platform.git
 cd realtime-messaging-platform
 
-# Install backend dependencies
-npm install
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
+# Install dependencies across all workspace packages (backend + frontend)
+pnpm install
 ```
 
 ### 2. Environment Configuration
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
-Ensure `DATABASE_URL` matches your local PostgreSQL instance:
+Ensure `DATABASE_URL` matches your local or cloud PostgreSQL instance:
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/chat_db?schema=public"
 JWT_SECRET="your-super-secret-jwt-key"
-REDIS_ENABLED="false" # Set to true if local Redis instance is active
+REDIS_ENABLED="false" # Set to true if local/cloud Redis instance is active
 PORT=3000
 ```
 
 ### 3. Database Migration
 ```bash
-npx prisma generate
-npx prisma migrate dev --name init
+# Generate Prisma Client & push schema to database
+pnpm prisma:generate
+pnpm prisma:push
+pnpm db:seed
 ```
 
 ### 4. Running Development Servers
 ```bash
-# Terminal 1: Backend API & WebSocket Gateway
-npm run start:dev
+# Option A: Run both Backend and Frontend concurrently
+pnpm dev
 
-# Terminal 2: Frontend Client (Next.js)
-cd frontend
-npm run dev
+# Option B: Run independently
+pnpm dev:backend   # NestJS API & WebSocket Gateway on port 3000
+pnpm dev:frontend  # Next.js App on port 3001
 ```
-Open **`http://localhost:3000`** in your browser to launch the discovery radar.
+Open **`http://localhost:3001`** in your browser to launch the discovery radar.
 
 ---
 
@@ -201,14 +200,14 @@ Execute the complete automated test suite locally:
 
 ```bash
 # Run 53 unit tests (Concurrency, Idempotency, Presence, Queue)
-npm test
+pnpm test:backend
 
 # Run 21 end-to-end integration tests (HTTP REST, WebSocket Rooms)
-npm run test:e2e
+pnpm test:backend:e2e
 
-# Verify TypeScript compilation (Backend & Frontend)
-npx tsc --noEmit
-cd frontend && npx tsc --noEmit && cd ..
+# Production builds
+pnpm build:backend
+pnpm build:frontend
 ```
 
 ---

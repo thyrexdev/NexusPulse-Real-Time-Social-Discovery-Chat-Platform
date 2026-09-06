@@ -1,5 +1,10 @@
+packages:
+  - 'backend'
+  - 'frontend'
+
 allowBuilds:
   '@prisma/engines': true
   bcrypt: true
   prisma: true
+  sharp: false
   unrs-resolver: false
