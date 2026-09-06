@@ -4,10 +4,11 @@
   "private": true,
   "description": "NexusPulse Real-Time Social Discovery & Messaging Monorepo",
   "scripts": {
+    "start": "pnpm --filter backend run start:prod",
+    "build": "pnpm --filter backend run build",
     "dev": "pnpm --parallel run dev",
     "dev:backend": "pnpm --filter backend run start:dev",
     "dev:frontend": "pnpm --filter frontend run dev",
-    "build": "pnpm --recursive run build",
     "build:backend": "pnpm --filter backend run build",
     "build:frontend": "pnpm --filter frontend run build",
     "start:backend": "pnpm --filter backend run start:prod",
