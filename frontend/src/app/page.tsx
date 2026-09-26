@@ -94,9 +94,21 @@ export default function StrangerChatPage() {
   }, [authAsStranger]);
 
   const activeTopicObj = CLASSY_TOPICS.find((t) => t.id === selectedTopic);
+  const isChatActive = matchStatus === 'matched' || matchStatus === 'ended';
 
   return (
-    <main style={{ minHeight: '100vh', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+    <main
+      style={{
+        height: isChatActive ? '100dvh' : 'auto',
+        minHeight: '100dvh',
+        maxHeight: isChatActive ? '100dvh' : undefined,
+        width: '100%',
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: isChatActive ? 'hidden' : 'visible',
+      }}
+    >
       {/* Ambient Radial Halo & Subtle Grid */}
       <div className="ambient-halo" />
       <div className="ambient-grid" />
@@ -111,7 +123,21 @@ export default function StrangerChatPage() {
       />
 
       {/* Main Stage Switching */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: matchStatus === 'idle' ? 'stretch' : 'center', justifyContent: 'center', width: '100%', position: 'relative', zIndex: 10 }}>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: matchStatus === 'idle' ? 'stretch' : 'center',
+          justifyContent: isChatActive ? 'flex-start' : 'center',
+          width: '100%',
+          position: 'relative',
+          zIndex: 10,
+          minHeight: 0,
+          height: isChatActive ? '100%' : 'auto',
+          overflow: isChatActive ? 'hidden' : 'visible',
+        }}
+      >
         <AnimatePresence mode="wait">
           {matchStatus === 'idle' && (
             <ClassyHeroStage
