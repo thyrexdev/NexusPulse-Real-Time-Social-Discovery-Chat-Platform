@@ -20,16 +20,16 @@ export const ClassyHeader: React.FC<ClassyHeaderProps> = ({
 }) => {
   return (
     <motion.header
-      initial={{ opacity: 0, y: -12 }}
+      initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="classy-header"
     >
-      {/* Brand Identity */}
+      {/* Brand Minimalist Glyph & Wordmark */}
       <div className="classy-brand">
         <div className="classy-logo-icon">
-          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-            forum
+          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
+            grain
           </span>
         </div>
         <div>
@@ -37,39 +37,29 @@ export const ClassyHeader: React.FC<ClassyHeaderProps> = ({
         </div>
       </div>
 
-      {/* Center Live Mesh Status */}
-      <div className="classy-badge-online">
+      {/* Minimalist Live Status Telemetry (Hidden on narrow mobile to prevent squeeze) */}
+      <div className="classy-badge-online classy-header-center-status">
         <span className="classy-online-dot" />
         <span>
           {activeState === 'matched'
-            ? 'Stranger Connected'
+            ? 'In Conversation'
             : activeState === 'searching'
-            ? 'Searching for Stranger...'
+            ? 'Matching...'
             : activeState === 'ended'
-            ? 'Chat Ended'
-            : `${onlineCount} Strangers Online`}
+            ? 'Session Closed'
+            : `${onlineCount} Online`}
         </span>
       </div>
 
-      {/* User Location & Stranger ID Badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* User Location & Stranger Pseudonym */}
+      <div className="classy-header-right-actions">
         {currentUserGeo && (
           <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 12px',
-              borderRadius: '20px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              fontSize: '0.8rem',
-              color: '#CBD5E1',
-            }}
-            title={`Your Detected IP Location: ${currentUserGeo.country} (${currentUserGeo.ip})`}
+            className="classy-header-geo-pill"
+            title={`Detected Location: ${currentUserGeo.country} (${currentUserGeo.ip})`}
           >
             <span>{currentUserGeo.flag || '🌐'}</span>
-            <span style={{ fontWeight: 600 }}>{currentUserGeo.country}</span>
+            <span className="classy-geo-country-label">{currentUserGeo.country}</span>
           </div>
         )}
 
@@ -77,11 +67,11 @@ export const ClassyHeader: React.FC<ClassyHeaderProps> = ({
           type="button"
           onClick={onRefreshIdentity}
           className="classy-user-chip"
-          title="Get a new anonymous Stranger ID"
+          title="Regenerate anonymous Stranger ID"
         >
-          <span style={{ fontSize: '14px' }}>👤</span>
-          <span>{currentUser?.username || 'Stranger'}</span>
-          <span style={{ fontSize: '0.7rem', color: '#818CF8', fontWeight: 600 }}>New ID</span>
+          <span style={{ fontSize: '13px', opacity: 0.8 }}>👤</span>
+          <span className="classy-user-chip-name">{currentUser?.username || 'Stranger'}</span>
+          <span className="classy-user-chip-action">New ID</span>
         </button>
       </div>
     </motion.header>

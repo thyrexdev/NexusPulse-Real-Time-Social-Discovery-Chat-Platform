@@ -111,7 +111,7 @@ export default function StrangerChatPage() {
       />
 
       {/* Main Stage Switching */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative', zIndex: 10 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: matchStatus === 'idle' ? 'stretch' : 'center', justifyContent: 'center', width: '100%', position: 'relative', zIndex: 10 }}>
         <AnimatePresence mode="wait">
           {matchStatus === 'idle' && (
             <ClassyHeroStage

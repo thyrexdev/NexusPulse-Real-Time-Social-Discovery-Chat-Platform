@@ -21,34 +21,34 @@ export const ClassyScanningStage: React.FC<ClassyScanningStageProps> = ({ topic,
   return (
     <motion.div
       key="classy-scanning"
-      initial={{ opacity: 0, scale: 0.98 }}
+      initial={{ opacity: 0, scale: 0.99 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.4 }}
+      exit={{ opacity: 0, scale: 0.99 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className="classy-scanning-stage"
     >
-      {/* Celestial Pulse Animation */}
+      {/* Minimalist Celestial Radar */}
       <div className="classy-pulse-celestial">
         <div className="celestial-ring" />
         <div className="celestial-ring" />
         <div className="celestial-ring" />
 
         <div className="celestial-center-icon">
-          <span className="material-symbols-outlined" style={{ fontSize: '32px' }}>
-            wifi_tethering
+          <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>
+            radar
           </span>
         </div>
       </div>
 
       <h2 className="classy-scan-title">
-        Connecting you with someone...
+        Connecting with a stranger...
       </h2>
 
       <p className="classy-scan-subtitle">
-        Looking for a partner interested in <strong style={{ color: '#A5B4FC' }}>#{topic}</strong>
+        Scanning active peers for topic <strong style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>#{topic}</strong>
         <br />
-        <span style={{ fontSize: '0.85rem', color: '#64748B', display: 'inline-block', marginTop: '6px' }}>
-          Elapsed: {seconds}s
+        <span style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', display: 'inline-block', marginTop: '8px' }}>
+          Elapsed: {String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}
         </span>
       </p>
 
