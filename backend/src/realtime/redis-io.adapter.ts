@@ -25,25 +25,27 @@ export class RedisIoAdapter extends IoAdapter {
     }
 
     try {
+      const redisUrl =
+        this.configService.get<string>('REDIS_URL') ||
+        this.configService.get<string>('REDIS_PRIVATE_URL');
       const host = this.configService.get<string>('REDIS_HOST', 'localhost');
       const port = this.configService.get<number>('REDIS_PORT', 6379);
       const password = this.configService.get<string>('REDIS_PASSWORD', '');
 
-      const redisOptions: any = {
-        host,
-        port,
-        retryStrategy: (times: number) => {
-          if (times > 3) {
-            this.logger.warn('Redis connection retry limit reached. Falling back to in-memory adapter.');
-            return null;
-          }
-          return Math.min(times * 100, 3000);
-        },
-      };
-
-      if (password) {
-        redisOptions.password = password;
-      }
+      const redisOptions: any = redisUrl
+        ? redisUrl
+        : {
+            host,
+            port: Number(port),
+            ...(password ? { password } : {}),
+            retryStrategy: (times: number) => {
+              if (times > 2) {
+                return null;
+              }
+              return 200;
+            },
+            connectTimeout: 3000,
+          };
 
       const pubClient = new Redis(redisOptions);
       const subClient = pubClient.duplicate();
@@ -56,15 +58,20 @@ export class RedisIoAdapter extends IoAdapter {
         this.logger.warn(`Redis Sub client error: ${err.message}.`);
       });
 
-      await Promise.all([
-        new Promise<void>((resolve, reject) => {
-          pubClient.once('ready', () => resolve());
-          pubClient.once('error', (err) => reject(err));
-        }),
-        new Promise<void>((resolve, reject) => {
-          subClient.once('ready', () => resolve());
-          subClient.once('error', (err) => reject(err));
-        }),
+      await Promise.race([
+        Promise.all([
+          new Promise<void>((resolve, reject) => {
+            pubClient.once('ready', () => resolve());
+            pubClient.once('error', (err) => reject(err));
+          }),
+          new Promise<void>((resolve, reject) => {
+            subClient.once('ready', () => resolve());
+            subClient.once('error', (err) => reject(err));
+          }),
+        ]),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis connection timed out after 3000ms')), 3000),
+        ),
       ]);
 
       this.adapterConstructor = createAdapter(pubClient, subClient);

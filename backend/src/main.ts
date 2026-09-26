@@ -19,14 +19,36 @@ async function bootstrap() {
     next();
   });
 
-  // Security Headers
-  app.use(helmet());
+  // Security Headers (allow cross-origin requests from frontend)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: false,
+    }),
+  );
 
   // CORS Configuration
-  const corsOrigin = configService.get<string>('CORS_ORIGIN', '*');
+  const rawCors = configService.get<string>('CORS_ORIGIN', '*');
   app.enableCors({
-    origin: corsOrigin === '*' ? true : corsOrigin.split(','),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, mobile apps, same-origin, health checks)
+      if (!origin || rawCors === '*') {
+        return callback(null, true);
+      }
+      const allowedOrigins = rawCors.split(',').map((o) => o.trim().replace(/\/+$/, ''));
+      const cleanOrigin = origin.replace(/\/+$/, '');
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        allowedOrigins.includes('*') ||
+        cleanOrigin.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    exposedHeaders: ['Set-Cookie'],
   });
 
   // Global Validation Pipe
@@ -52,9 +74,9 @@ async function bootstrap() {
   // Enable graceful shutdown hooks
   app.enableShutdownHooks();
 
-  const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
-  logger.log(`🚀 Real-Time Chat Platform running on http://localhost:${port}`);
+  const port = Number(process.env.PORT || configService.get('PORT') || 3000);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`🚀 Real-Time Chat Platform running on http://0.0.0.0:${port}`);
 }
 
 bootstrap();

@@ -11,7 +11,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     const connectionString =
       process.env.DATABASE_URL ||
       'postgresql://postgres:postgres@localhost:5432/chat_db?schema=public';
-    const pool = new pg.Pool({ connectionString });
+    const isCloudPg =
+      process.env.NODE_ENV === 'production' ||
+      connectionString.includes('railway') ||
+      connectionString.includes('sslmode=require');
+    const pool = new pg.Pool({
+      connectionString,
+      ...(isCloudPg && !connectionString.includes('localhost')
+        ? { ssl: { rejectUnauthorized: false } }
+        : {}),
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter });
   }
