@@ -18,6 +18,7 @@ export interface MatchResult {
   position?: number;
   session?: MatchSessionWithDetails;
   matchedPeer?: QueuedUser;
+  currentUser?: QueuedUser;
   terminatedSession?: MatchSessionWithDetails;
   strandedPartnerId?: string;
 }
@@ -41,6 +42,7 @@ export class MatchService {
     userId: string,
     socketId: string,
     topic = 'general',
+    geo?: { country?: string; countryCode?: string; flag?: string; city?: string; ip?: string },
   ): Promise<MatchResult> {
     // 1. Check if user already has an active session
     let terminatedSession: MatchSessionWithDetails | undefined;
@@ -70,6 +72,11 @@ export class MatchService {
       socketId,
       topic,
       queuedAt: Date.now(),
+      country: geo?.country,
+      countryCode: geo?.countryCode,
+      flag: geo?.flag,
+      city: geo?.city,
+      ip: geo?.ip,
     };
 
     // 3. Atomically find and extract a compatible waiting peer from the queue
@@ -91,6 +98,7 @@ export class MatchService {
         status: 'matched',
         session,
         matchedPeer,
+        currentUser,
         terminatedSession,
         strandedPartnerId,
       };
@@ -102,6 +110,7 @@ export class MatchService {
     return {
       status: 'queued',
       position: enqueued.position,
+      currentUser,
       terminatedSession,
       strandedPartnerId,
     };

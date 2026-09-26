@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { Message, TypingEvent } from '@/types/chat';
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
 
 class SocketManager {
   private socket: Socket | null = null;
@@ -83,6 +83,10 @@ class SocketManager {
   ) {
     if (this.socket && this.socket.connected) {
       this.socket.emit('match:join_queue', { topic }, callback);
+    } else if (this.socket) {
+      this.socket.once('ready', () => {
+        this.socket?.emit('match:join_queue', { topic }, callback);
+      });
     } else if (callback) {
       callback({ status: 'error', message: 'Socket disconnected' });
     }

@@ -19,6 +19,7 @@ import { SendMessageDto } from '../message/dto/message.dto';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { MatchService } from '../match/match.service';
 import { ModerationService } from '../moderation/moderation.service';
+import { resolveGeoLocation, GeoLocation } from '../common/utils/geo.util';
 
 @WebSocketGateway({
   cors: {
@@ -67,6 +68,26 @@ export class ChatGateway
     this.logger.log('WebSocket Gateway initialized');
   }
 
+  private formatPeerPayload(userRecord: any, queuedPeer?: any, fallbackGeo?: GeoLocation) {
+    const country = queuedPeer?.country || fallbackGeo?.country || 'Global';
+    const countryCode = queuedPeer?.countryCode || fallbackGeo?.countryCode || 'UN';
+    const flag = queuedPeer?.flag || fallbackGeo?.flag || '🌐';
+    const city = queuedPeer?.city || fallbackGeo?.city;
+    const ip = queuedPeer?.ip || fallbackGeo?.ip;
+
+    return {
+      id: userRecord?.id || queuedPeer?.userId,
+      username: userRecord?.username || 'Stranger',
+      fullName: userRecord?.fullName || `Stranger from ${country} ${flag}`,
+      avatar: userRecord?.avatar || flag,
+      country,
+      countryCode,
+      flag,
+      city,
+      ip,
+    };
+  }
+
   async handleConnection(socket: Socket) {
     try {
       const user = await this.wsJwtGuard.validateSocket(socket);
@@ -80,8 +101,13 @@ export class ChatGateway
         return;
       }
 
-      // Store authenticated user in socket state
+      // Store authenticated user and detected client GeoIP in socket state
       socket.data.user = user;
+      const geo = resolveGeoLocation(
+        socket.handshake?.headers as any,
+        socket.handshake?.address,
+      );
+      socket.data.geo = geo;
 
       // Track presence
       const isFirstConnection = this.presenceService.addConnection(user.userId, socket.id);
@@ -104,15 +130,18 @@ export class ChatGateway
         socket.join(`conversation:${conversation.id}`);
       }
 
-      // Emit connected confirmation
+      // Emit connected confirmation with detected geo
       socket.emit('ready', {
         userId: user.userId,
         username: user.username,
+        geo,
         onlineUsers: this.presenceService.getOnlineUsers(),
         joinedConversations: conversations.map((c) => c.id),
       });
 
-      this.logger.log(`Socket connected: ${socket.id} for user ${user.username} (${user.userId})`);
+      this.logger.log(
+        `Socket connected: ${socket.id} for user ${user.username} (${user.userId}) from ${geo.country} (${geo.flag}) [${geo.ip}]`,
+      );
     } catch (error: any) {
       this.logger.error(`Error in handleConnection for socket ${socket.id}: ${error.message}`);
       socket.disconnect(true);
@@ -179,20 +208,20 @@ export class ChatGateway
       return { status: 'error', message: 'Unauthorized' };
     }
 
-    // Rate limit: max 5 queue attempts per 10 seconds per socket
-    if (!this.checkRateLimit(socket.id, 'match:join_queue', 5, 10_000)) {
+    // Rate limit: max 25 queue attempts per 10 seconds per socket for fast Umingle skip/next
+    if (!this.checkRateLimit(socket.id, 'match:join_queue', 25, 10_000)) {
       return { status: 'error', code: 'RATE_LIMITED', message: 'Too many matchmaking requests. Slow down.' };
     }
 
     const topic = payload?.topic?.trim() || 'general';
-    const result = await this.matchService.requestMatch(user.userId, socket.id, topic);
+    const result = await this.matchService.requestMatch(user.userId, socket.id, topic, socket.data.geo);
 
     // If an existing active session was terminated to join queue, notify the abandoned partner
     if (result.terminatedSession && result.strandedPartnerId) {
       this.server.to(`user:${result.strandedPartnerId}`).emit('peer:skipped', {
         sessionId: result.terminatedSession.id,
         reason: 'SKIPPED',
-        message: 'Your partner left the session to find another match',
+        message: 'Your partner skipped to find another stranger',
       });
     }
 
@@ -207,21 +236,28 @@ export class ChatGateway
         this.server.sockets.sockets.get(sId)?.join(`conversation:${convId}`);
       }
 
-      // Notify current user (partner is user1)
+      // Notify current user (partner is matchedPeer)
       socket.emit('match:found', {
         sessionId,
         conversationId: convId,
         topic: result.session.topic,
-        peer: result.session.user1,
+        peer: this.formatPeerPayload(
+          result.session.user1Id === user.userId ? result.session.user2 : result.session.user1,
+          result.matchedPeer,
+        ),
         startedAt: result.session.startedAt,
       });
 
-      // Notify matched peer (partner is user2 / current user)
+      // Notify matched peer (partner is currentUser)
       this.server.to(`user:${result.matchedPeer.userId}`).emit('match:found', {
         sessionId,
         conversationId: convId,
         topic: result.session.topic,
-        peer: result.session.user2,
+        peer: this.formatPeerPayload(
+          result.session.user1Id === user.userId ? result.session.user1 : result.session.user2,
+          result.currentUser,
+          socket.data.geo,
+        ),
         startedAt: result.session.startedAt,
       });
 
@@ -248,8 +284,8 @@ export class ChatGateway
     const user: AuthenticatedUser = socket.data.user;
     if (!user) return { status: 'error', message: 'Unauthorized' };
 
-    // Rate limit: max 6 skips per 10 seconds per socket
-    if (!this.checkRateLimit(socket.id, 'match:skip', 6, 10_000)) {
+    // Rate limit: max 25 skips per 10 seconds per socket for fast Umingle-style skipping
+    if (!this.checkRateLimit(socket.id, 'match:skip', 25, 10_000)) {
       return { status: 'error', code: 'RATE_LIMITED', message: 'Skipping too fast. Please wait a moment.' };
     }
 
@@ -262,7 +298,7 @@ export class ChatGateway
       // Notify partner
       this.server.to(`user:${partnerUserId}`).emit('peer:skipped', {
         sessionId: session.id,
-        message: 'Your partner skipped to another chat',
+        message: 'Stranger has disconnected.',
       });
 
       // If autoRequeue is requested, immediately re-enter user into matchmaking
@@ -272,6 +308,7 @@ export class ChatGateway
           user.userId,
           socket.id,
           topic,
+          socket.data.geo,
         );
 
         if (requeueResult.status === 'matched' && requeueResult.session && requeueResult.matchedPeer) {
@@ -286,7 +323,12 @@ export class ChatGateway
             sessionId: requeueResult.session.id,
             conversationId: convId,
             topic: requeueResult.session.topic,
-            peer: requeueResult.session.user1,
+            peer: this.formatPeerPayload(
+              requeueResult.session.user1Id === user.userId
+                ? requeueResult.session.user2
+                : requeueResult.session.user1,
+              requeueResult.matchedPeer,
+            ),
             startedAt: requeueResult.session.startedAt,
           });
 
@@ -294,7 +336,13 @@ export class ChatGateway
             sessionId: requeueResult.session.id,
             conversationId: convId,
             topic: requeueResult.session.topic,
-            peer: requeueResult.session.user2,
+            peer: this.formatPeerPayload(
+              requeueResult.session.user1Id === user.userId
+                ? requeueResult.session.user1
+                : requeueResult.session.user2,
+              requeueResult.currentUser,
+              socket.data.geo,
+            ),
             startedAt: requeueResult.session.startedAt,
           });
 
@@ -435,6 +483,14 @@ export class ChatGateway
       // Broadcast new message to all participants in conversation room
       this.server.to(`conversation:${payload.conversationId}`).emit('message:created', message);
 
+      // Automatically stop typing indicator in conversation room when message is delivered
+      this.server.to(`conversation:${payload.conversationId}`).emit('typing:stopped', {
+        conversationId: payload.conversationId,
+        userId: user.userId,
+        username: user.username,
+        timestamp: new Date().toISOString(),
+      });
+
       // Return delivery acknowledgement to sender
       return { status: 'ok', data: message };
     } catch (error: any) {
@@ -479,6 +535,7 @@ export class ChatGateway
     socket.to(`conversation:${payload.conversationId}`).emit('typing:stopped', {
       conversationId: payload.conversationId,
       userId: user.userId,
+      username: user.username,
       timestamp: new Date().toISOString(),
     });
   }

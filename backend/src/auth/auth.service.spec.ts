@@ -168,4 +168,37 @@ describe('AuthService', () => {
       await expect(service.getProfile('invalid-id')).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('createStranger', () => {
+    it('should create an ephemeral stranger user with generated credentials and token', async () => {
+      userRepository.create.mockImplementation(async (data: any) => ({
+        id: 'stranger-uuid-1',
+        username: data.username,
+        email: data.email,
+        fullName: data.fullName,
+        passwordHash: data.passwordHash,
+        avatar: data.avatar,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+
+      const geo = {
+        ip: '156.192.1.1',
+        countryCode: 'EG',
+        country: 'Egypt',
+        flag: '🇪🇬',
+      };
+
+      const result = await service.createStranger(geo);
+
+      expect(result).toHaveProperty('user');
+      expect(result).toHaveProperty('accessToken', 'mock-jwt-token');
+      expect(result.user.username).toMatch(/^Stranger_\d+$/);
+      expect(result.user.email).toContain('@stranger.local');
+      expect(result.user.fullName).toContain('Egypt');
+      expect(result.geo).toEqual(geo);
+      expect(userRepository.create).toHaveBeenCalled();
+      expect(jwtService.sign).toHaveBeenCalled();
+    });
+  });
 });

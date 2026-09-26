@@ -92,11 +92,24 @@ export enum MatchStatus {
   ENDED = 'ENDED',
 }
 
+export interface GeoLocation {
+  ip: string;
+  countryCode: string;
+  country: string;
+  flag: string;
+  city?: string;
+}
+
 export interface MatchPeer {
   id: string;
   username: string;
   fullName: string;
   avatar?: string | null;
+  country?: string;
+  countryCode?: string;
+  flag?: string;
+  city?: string;
+  ip?: string;
 }
 
 export interface MatchSession {

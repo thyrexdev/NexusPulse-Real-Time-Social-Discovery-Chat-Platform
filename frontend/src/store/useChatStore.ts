@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, Conversation, Message, ConversationType, ParticipantRole, MessageType } from '@/types/chat';
+import { User, Conversation, Message, ConversationType, ParticipantRole, MessageType, GeoLocation, MatchPeer } from '@/types/chat';
 import { api } from '@/lib/api';
 import { socketManager } from '@/lib/socket';
 
@@ -36,6 +36,7 @@ export const DEMO_USERS: Record<'alice' | 'bob' | 'charlie' | 'stranger', User> 
 
 interface ChatState {
   currentUser: User | null;
+  currentUserGeo: GeoLocation | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -50,12 +51,13 @@ interface ChatState {
   matchStatus: 'idle' | 'searching' | 'matched' | 'ended';
   activeTopic: string;
   activeSession: any | null;
-  activePeer: any | null;
+  activePeer: MatchPeer | null;
   queuePosition: number | null;
   partnerStatusMessage: string | null;
 
   // Actions
   initAuth: () => Promise<void>;
+  authAsStranger: () => Promise<User | null>;
   login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string, fullName: string) => Promise<void>;
   logout: () => void;
@@ -82,6 +84,7 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   currentUser: null,
+  currentUserGeo: null,
   token: null,
   isAuthenticated: false,
   isLoading: true,
@@ -115,20 +118,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const savedDemo = localStorage.getItem('demo_user');
-      if (savedDemo) {
-        try {
-          const parsed: User = JSON.parse(savedDemo);
-          set({ currentUser: parsed, isAuthenticated: true, isLoading: false, connectionStatus: 'demo' });
-          get().refreshConversations();
-          return;
-        } catch {
-          // ignore error
-        }
-      }
+    // Auto-create ephemeral stranger guest session
+    await get().authAsStranger();
+  },
+
+  authAsStranger: async () => {
+    set({ isLoading: true });
+    try {
+      const res = await api.createStranger();
+      set({
+        currentUser: res.user,
+        token: res.accessToken,
+        currentUserGeo: res.geo || null,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      get().setupSocketListeners();
+      return res.user;
+    } catch (err) {
+      console.error('Failed to create stranger session', err);
+      set({ isLoading: false });
+      return null;
     }
-    set({ isLoading: false });
   },
 
   setupSocketListeners: () => {
@@ -145,10 +156,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ connectionStatus: 'connected' });
     });
 
-    socket.on('ready', (data: { userId: string; onlineUsers: string[]; joinedConversations: string[] }) => {
+    socket.on('ready', (data: { userId: string; onlineUsers: string[]; joinedConversations: string[]; geo?: any }) => {
       set({
         onlineUserIds: new Set(data.onlineUsers || []),
         connectionStatus: 'connected',
+        currentUserGeo: data.geo || get().currentUserGeo,
       });
     });
 
@@ -186,31 +198,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
           return c;
         });
 
-        return { messages: newMessages, conversations: newConversations };
+        // Automatically clear partner typing indicator as soon as their message arrives
+        const currentTyping = state.typingUsers[message.conversationId] || [];
+        const cleanedTyping = currentTyping.filter(
+          (u) => u !== message.senderId && u !== message.sender?.username,
+        );
+
+        return {
+          messages: newMessages,
+          conversations: newConversations,
+          typingUsers: {
+            ...state.typingUsers,
+            [message.conversationId]: cleanedTyping,
+          },
+        };
       });
     });
 
     socket.on('typing:started', (data: { conversationId: string; userId: string; username: string }) => {
       const { currentUser } = get();
       if (data.userId === currentUser?.id) return;
+
+      const userIdentifier = data.username || data.userId;
       set((state) => {
         const current = state.typingUsers[data.conversationId] || [];
-        if (!current.includes(data.username)) {
+        if (!current.includes(userIdentifier)) {
           return {
-            typingUsers: { ...state.typingUsers, [data.conversationId]: [...current, data.username] },
+            typingUsers: { ...state.typingUsers, [data.conversationId]: [...current, userIdentifier] },
           };
         }
         return state;
       });
+
+      // Safety timeout: auto-clear after 3 seconds in case typing:stopped is missed
+      setTimeout(() => {
+        set((state) => {
+          const current = state.typingUsers[data.conversationId] || [];
+          return {
+            typingUsers: {
+              ...state.typingUsers,
+              [data.conversationId]: current.filter((u) => u !== userIdentifier && u !== data.userId && u !== data.username),
+            },
+          };
+        });
+      }, 3000);
     });
 
-    socket.on('typing:stopped', (data: { conversationId: string; userId: string }) => {
+    socket.on('typing:stopped', (data: { conversationId: string; userId: string; username?: string }) => {
       set((state) => {
         const current = state.typingUsers[data.conversationId] || [];
         return {
           typingUsers: {
             ...state.typingUsers,
-            [data.conversationId]: current.filter((u) => u !== data.userId),
+            [data.conversationId]: current.filter((u) => u !== data.userId && u !== data.username),
           },
         };
       });
@@ -525,6 +565,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
 
+    // Immediately stop typing indicator on send
+    socketManager.stopTyping(activeConversationId);
+
     socketManager.sendMessage(
       {
         conversationId: activeConversationId,
@@ -635,130 +678,81 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   joinMatchQueue: async (topic = 'general') => {
-    const { connectionStatus, currentUser } = get();
+    let { currentUser, token } = get();
+    if (!currentUser || !token) {
+      const user = await get().authAsStranger();
+      if (!user) return;
+    }
+
     set({
       matchStatus: 'searching',
       activeTopic: topic,
       partnerStatusMessage: null,
       activePeer: null,
       activeSession: null,
+      messages: [],
     });
 
-    if (connectionStatus === 'demo' || !currentUser) {
-      setTimeout(() => {
-        const other = currentUser?.username === 'alice' ? DEMO_USERS.bob : DEMO_USERS.alice;
-        const fakeSession = {
-          id: `demo-sess-${Date.now()}`,
-          conversationId: `demo-conv-${Date.now()}`,
-          topic,
-          peer: other,
-          startedAt: new Date().toISOString(),
-          status: 'ACTIVE',
-        };
-        const fakeConv: Conversation = {
-          id: fakeSession.conversationId,
-          type: ConversationType.PRIVATE,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          participants: [
-            {
-              id: 'p1',
-              conversationId: fakeSession.conversationId,
-              userId: currentUser?.id || 'guest',
-              role: ParticipantRole.MEMBER,
-              joinedAt: new Date().toISOString(),
-              user: currentUser || DEMO_USERS.alice,
-            },
-            {
-              id: 'p2',
-              conversationId: fakeSession.conversationId,
-              userId: other.id,
-              role: ParticipantRole.MEMBER,
-              joinedAt: new Date().toISOString(),
-              user: other,
-            },
-          ],
-          messages: [
-            {
-              id: `msg-${Date.now()}`,
-              conversationId: fakeSession.conversationId,
-              senderId: other.id,
-              content: `Hey there! Matched on #${topic}. Great to meet you! ✨`,
-              type: MessageType.TEXT,
-              isEdited: false,
-              createdAt: new Date().toISOString(),
-              sender: other,
-            },
-          ],
-        };
-        set((state) => ({
-          matchStatus: 'matched',
-          activeSession: fakeSession,
-          activePeer: other,
-          activeConversationId: fakeConv.id,
-          conversations: [fakeConv, ...state.conversations],
-          messages: fakeConv.messages || [],
-        }));
-      }, 1400);
-      return;
-    }
-
     socketManager.joinMatchQueue(topic, (response) => {
-      if (response.status === 'queued') {
+      if (response?.status === 'queued') {
         set({ matchStatus: 'searching', queuePosition: response.position || 1 });
       }
     });
   },
 
   leaveMatchQueue: () => {
-    const { connectionStatus } = get();
-    if (connectionStatus !== 'demo') {
-      socketManager.leaveMatchQueue();
-    }
+    socketManager.leaveMatchQueue();
     set({ matchStatus: 'idle', queuePosition: null });
   },
 
   skipCurrentMatch: async (autoRequeue = true) => {
-    const { activeSession, connectionStatus, activeTopic } = get();
-    if (!activeSession) return;
-
-    if (connectionStatus === 'demo') {
-      set({ matchStatus: 'ended', partnerStatusMessage: 'Skipping to next stranger...' });
+    const { activeSession, activeTopic } = get();
+    if (!activeSession) {
       if (autoRequeue) {
-        setTimeout(() => {
-          get().joinMatchQueue(activeTopic);
-        }, 300);
+        get().joinMatchQueue(activeTopic);
       }
       return;
     }
 
+    // Instantly reset chat messages and show transition for fast skip feel
+    set({
+      messages: [],
+      matchStatus: autoRequeue ? 'searching' : 'ended',
+      partnerStatusMessage: autoRequeue ? null : 'You disconnected.',
+      activePeer: null,
+      activeSession: null,
+      activeConversationId: null,
+    });
+
     socketManager.skipMatch(activeSession.id, autoRequeue, activeTopic, (res) => {
-      if (autoRequeue && res?.status === 'queued') {
+      if (autoRequeue) {
+        if (res?.status === 'queued') {
+          set({
+            matchStatus: 'searching',
+            queuePosition: res.position || 1,
+          });
+        }
+      } else {
         set({
-          matchStatus: 'searching',
-          queuePosition: res.position || 1,
-          activeSession: null,
-          activePeer: null,
-          messages: [],
+          matchStatus: 'ended',
+          partnerStatusMessage: 'You disconnected.',
         });
       }
     });
-
-    if (!autoRequeue) {
-      set({ matchStatus: 'ended', partnerStatusMessage: 'You skipped the chat.' });
-    }
   },
 
   leaveCurrentSession: async () => {
-    const { activeSession, connectionStatus } = get();
-    if (activeSession && connectionStatus !== 'demo') {
+    const { activeSession } = get();
+    if (activeSession) {
       socketManager.leaveMatchSession(activeSession.id);
     }
     set({
       matchStatus: 'idle',
       activeSession: null,
       activePeer: null,
+      activeConversationId: null,
       partnerStatusMessage: null,
+      messages: [],
     });
   },
 

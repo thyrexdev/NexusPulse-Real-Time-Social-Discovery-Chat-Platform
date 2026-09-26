@@ -11,6 +11,7 @@ import { UserRepository } from '../user/user.repository';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthenticatedUser, JwtPayload } from '../common/interfaces/authenticated-user.interface';
+import { GeoLocation } from '../common/utils/geo.util';
 
 @Injectable()
 export class AuthService {
@@ -114,6 +115,48 @@ export class AuthService {
       avatar: user.avatar,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  }
+
+  async createStranger(geo?: GeoLocation) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const uniqueId = Math.random().toString(36).substring(2, 9);
+    const username = `Stranger_${randomSuffix}`;
+    const email = `stranger_${uniqueId}_${Date.now()}@stranger.local`;
+
+    // Fast static pre-hashed string to avoid CPU-bound bcrypt delay on every anonymous visitor
+    const dummyPasswordHash = '$2a$10$abcdefghijklmnopqrstuvwxyz0123456789dummyhashforstrangers';
+
+    const countryLabel = geo?.country ? ` from ${geo.country} ${geo.flag}` : '';
+    const user = await this.userRepository.create({
+      email,
+      username,
+      fullName: `Stranger${countryLabel}`,
+      passwordHash: dummyPasswordHash,
+      avatar: geo?.flag || '👤',
+    });
+
+    this.logger.log(
+      `Stranger guest session created: ${user.id} (${username}) from ${geo?.country || 'Unknown'} (${geo?.flag || ''})`,
+    );
+
+    const token = this.generateToken({
+      sub: user.id,
+      email: user.email,
+      username: user.username,
+    });
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        avatar: user.avatar,
+        createdAt: user.createdAt,
+      },
+      accessToken: token,
+      geo,
     };
   }
 

@@ -5,6 +5,11 @@ export interface QueuedUser {
   socketId: string;
   topic?: string;
   queuedAt: number;
+  country?: string;
+  countryCode?: string;
+  flag?: string;
+  city?: string;
+  ip?: string;
 }
 
 @Injectable()
@@ -72,9 +77,14 @@ export class MatchQueue {
   enqueue(user: QueuedUser): { success: boolean; position: number } {
     if (this.userMap.has(user.userId)) {
       const existing = this.userMap.get(user.userId)!;
-      // Update socket ID if changed (e.g. reconnect)
+      // Update socket ID and geo if changed (e.g. reconnect)
       existing.socketId = user.socketId;
       existing.topic = user.topic;
+      if (user.country) existing.country = user.country;
+      if (user.countryCode) existing.countryCode = user.countryCode;
+      if (user.flag) existing.flag = user.flag;
+      if (user.city) existing.city = user.city;
+      if (user.ip) existing.ip = user.ip;
       this.socketToUser.set(user.socketId, user.userId);
       const pos = this.queue.findIndex((u) => u.userId === user.userId) + 1;
       return { success: false, position: pos };

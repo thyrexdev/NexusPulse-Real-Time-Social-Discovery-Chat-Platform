@@ -1,6 +1,6 @@
 import { AuthResponse, Conversation, Message, MessagesResponse, User } from '@/types/chat';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 class ApiClient {
   private token: string | null = null;
@@ -72,6 +72,18 @@ class ApiClient {
     });
     this.setToken(res.accessToken);
     return res;
+  }
+
+  async createStranger(): Promise<AuthResponse & { geo?: any }> {
+    const res = await this.request<AuthResponse & { geo?: any }>('/auth/stranger', {
+      method: 'POST',
+    });
+    this.setToken(res.accessToken);
+    return res;
+  }
+
+  async getGeo(): Promise<any> {
+    return this.request<any>('/auth/geo');
   }
 
   async login(data: { identifier: string; password: string }): Promise<AuthResponse> {
