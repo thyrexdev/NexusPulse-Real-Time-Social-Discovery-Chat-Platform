@@ -11,6 +11,14 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
+  // Normalize double slashes in incoming request paths (e.g. //auth/stranger -> /auth/stranger)
+  app.use((req: any, res: any, next: any) => {
+    if (req.url && req.url.startsWith('//')) {
+      req.url = req.url.replace(/^\/+/, '/');
+    }
+    next();
+  });
+
   // Security Headers
   app.use(helmet());
 

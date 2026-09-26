@@ -1,7 +1,10 @@
 import { io, Socket } from 'socket.io-client';
 import { Message, TypingEvent } from '@/types/chat';
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
+const getWsBaseUrl = (): string => {
+  const raw = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
+  return raw.replace(/\/+$/, '');
+};
 
 class SocketManager {
   private socket: Socket | null = null;
@@ -17,7 +20,8 @@ class SocketManager {
     }
 
     this.isConnecting = true;
-    this.socket = io(WS_BASE_URL, {
+    const wsUrl = getWsBaseUrl();
+    this.socket = io(wsUrl, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,

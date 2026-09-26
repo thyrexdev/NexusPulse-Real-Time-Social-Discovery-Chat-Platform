@@ -1,6 +1,9 @@
 import { AuthResponse, Conversation, Message, MessagesResponse, User } from '@/types/chat';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const getApiBaseUrl = (): string => {
+  const raw = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  return raw.replace(/\/+$/, '');
+};
 
 class ApiClient {
   private token: string | null = null;
@@ -30,7 +33,9 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const baseUrl = getApiBaseUrl();
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${baseUrl}${cleanEndpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
