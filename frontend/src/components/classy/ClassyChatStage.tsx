@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export interface ChatMessage {
@@ -58,15 +58,41 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onNextPartner]);
 
+  const scrollToBottom = useCallback((smooth = true) => {
+    endRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+  }, []);
+
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isPartnerTyping, partnerStatusMessage]);
+    scrollToBottom(true);
+  }, [messages, isPartnerTyping, partnerStatusMessage, scrollToBottom]);
+
+  // Handle mobile visualViewport resize when virtual keyboard opens
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const handleViewportChange = () => {
+      scrollToBottom(false);
+    };
+    window.visualViewport.addEventListener('resize', handleViewportChange);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+    };
+  }, [scrollToBottom]);
 
   useEffect(() => {
     if (!partnerStatusMessage) {
-      inputRef.current?.focus();
+      // Only auto-focus on desktop devices with fine pointer (mouse)
+      // to avoid aggressively opening the mobile virtual keyboard unprompted
+      const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+      if (!isTouch) {
+        inputRef.current?.focus();
+      }
     }
   }, [partnerStatusMessage]);
+
+  const handleInputFocus = useCallback(() => {
+    setTimeout(() => scrollToBottom(false), 80);
+    setTimeout(() => scrollToBottom(true), 280);
+  }, [scrollToBottom]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -240,6 +266,7 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
                 value={text}
                 disabled={Boolean(partnerStatusMessage)}
                 onChange={handleInputChange}
+                onFocus={handleInputFocus}
                 placeholder="Message stranger... (Enter to send, Esc to skip)"
                 className="classy-input-field"
               />

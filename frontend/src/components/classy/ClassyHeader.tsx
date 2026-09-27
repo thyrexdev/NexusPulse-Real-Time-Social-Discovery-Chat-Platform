@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 interface ClassyHeaderProps {
   currentUser?: { username: string; fullName: string; avatar?: string | null } | null;
   currentUserGeo?: { country?: string; flag?: string; ip?: string } | null;
-  onRefreshIdentity?: () => void;
   activeState: 'idle' | 'searching' | 'matched' | 'ended';
   onlineCount?: number;
 }
@@ -14,7 +13,6 @@ interface ClassyHeaderProps {
 export const ClassyHeader: React.FC<ClassyHeaderProps> = ({
   currentUser,
   currentUserGeo,
-  onRefreshIdentity,
   activeState,
   onlineCount = 1,
 }) => {
@@ -63,16 +61,13 @@ export const ClassyHeader: React.FC<ClassyHeaderProps> = ({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onRefreshIdentity}
+        <div
           className="classy-user-chip"
-          title="Regenerate anonymous Stranger ID"
+          title={`Logged in as ${currentUser?.username || 'Stranger'}`}
         >
           <span style={{ fontSize: '13px', opacity: 0.8 }}>👤</span>
           <span className="classy-user-chip-name">{currentUser?.username || 'Stranger'}</span>
-          <span className="classy-user-chip-action">New ID</span>
-        </button>
+        </div>
       </div>
     </motion.header>
   );

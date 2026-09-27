@@ -104,6 +104,17 @@ class ApiClient {
     return this.request<User>('/auth/me');
   }
 
+  async updateProfile(data: { username: string }): Promise<AuthResponse> {
+    const res = await this.request<AuthResponse>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (res.accessToken) {
+      this.setToken(res.accessToken);
+    }
+    return res;
+  }
+
   // Conversations
   async getConversations(): Promise<Conversation[]> {
     return this.request<Conversation[]>('/conversations');

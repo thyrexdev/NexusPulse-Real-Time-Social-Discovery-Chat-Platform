@@ -160,6 +160,51 @@ export class AuthService {
     };
   }
 
+  async updateProfile(userId: string, data: { username?: string }) {
+    let cleanName = data.username?.trim();
+    if (!cleanName) {
+      const current = await this.getProfile(userId);
+      return { user: current };
+    }
+
+    // Sanitize: allow alphanumeric, Arabic, spaces, dashes, underscores, max 24 chars
+    cleanName = cleanName.replace(/[^\w\s\u0600-\u06FF-]/gi, '').trim().slice(0, 24);
+    if (!cleanName) {
+      const current = await this.getProfile(userId);
+      return { user: current };
+    }
+
+    // Check if unique or append random suffix if collision with another user
+    const existing = await this.userRepository.findByUsername(cleanName);
+    let finalUsername = cleanName;
+    if (existing && existing.id !== userId) {
+      finalUsername = `${cleanName}_${Math.floor(100 + Math.random() * 900)}`;
+    }
+
+    const updated = await this.userRepository.update(userId, {
+      username: finalUsername,
+      fullName: finalUsername,
+    });
+
+    const token = this.generateToken({
+      sub: updated.id,
+      email: updated.email,
+      username: updated.username,
+    });
+
+    return {
+      user: {
+        id: updated.id,
+        username: updated.username,
+        email: updated.email,
+        fullName: updated.fullName,
+        avatar: updated.avatar,
+        createdAt: updated.createdAt,
+      },
+      accessToken: token,
+    };
+  }
+
   private generateToken(payload: JwtPayload): string {
     return this.jwtService.sign(payload);
   }

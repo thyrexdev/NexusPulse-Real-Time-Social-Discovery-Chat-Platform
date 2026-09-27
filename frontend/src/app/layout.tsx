@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -7,6 +7,13 @@ export const metadata: Metadata = {
   description:
     'An atmospheric, high-performance real-time social discovery platform engineered with NestJS, Socket.IO, PostgreSQL, and Redis.',
   keywords: ['NexusPulse', 'Real-Time', 'Discovery', 'Chat', 'Socket.IO', 'NestJS', 'PostgreSQL', 'Redis'],
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({

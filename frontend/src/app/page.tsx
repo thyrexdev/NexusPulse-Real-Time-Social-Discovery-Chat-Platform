@@ -21,7 +21,7 @@ export default function StrangerChatPage() {
     partnerStatusMessage,
     onlineUserIds,
     initAuth,
-    authAsStranger,
+    updateNickname,
     joinMatchQueue,
     leaveMatchQueue,
     skipCurrentMatch,
@@ -31,6 +31,27 @@ export default function StrangerChatPage() {
   } = useChatStore();
 
   const [selectedTopic, setSelectedTopic] = useState('design');
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  // Dynamic visualViewport tracking for mobile virtual keyboard resizing
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+
+    const handleViewportChange = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+      }
+    };
+
+    handleViewportChange();
+    window.visualViewport.addEventListener('resize', handleViewportChange);
+    window.visualViewport.addEventListener('scroll', handleViewportChange);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
+    };
+  }, []);
 
   useEffect(() => {
     initAuth();
@@ -61,10 +82,17 @@ export default function StrangerChatPage() {
     return typingList.length > 0;
   }, [typingUsers, activeConversationId]);
 
-  // Start matchmaking pulse
-  const handleStartPulse = useCallback(() => {
-    joinMatchQueue(selectedTopic);
-  }, [joinMatchQueue, selectedTopic]);
+  // Start matchmaking pulse (with optional nickname update)
+  const handleStartPulse = useCallback(
+    async (nickname?: string) => {
+      const cleanNick = nickname?.trim();
+      if (cleanNick && cleanNick !== currentUser?.username) {
+        await updateNickname(cleanNick);
+      }
+      joinMatchQueue(selectedTopic);
+    },
+    [joinMatchQueue, selectedTopic, updateNickname, currentUser?.username],
+  );
 
   // Abort / Leave
   const handleAbort = useCallback(() => {
@@ -88,22 +116,33 @@ export default function StrangerChatPage() {
     skipCurrentMatch(true);
   }, [skipCurrentMatch]);
 
-  // Refresh Stranger Identity
-  const handleRefreshIdentity = useCallback(() => {
-    authAsStranger();
-  }, [authAsStranger]);
-
   const activeTopicObj = CLASSY_TOPICS.find((t) => t.id === selectedTopic);
   const isChatActive = matchStatus === 'matched' || matchStatus === 'ended';
 
   return (
     <main
       style={{
-        height: isChatActive ? '100dvh' : 'auto',
-        minHeight: '100dvh',
-        maxHeight: isChatActive ? '100dvh' : undefined,
+        height: isChatActive
+          ? viewportHeight
+            ? `${viewportHeight}px`
+            : '100dvh'
+          : 'auto',
+        minHeight: isChatActive
+          ? viewportHeight
+            ? `${viewportHeight}px`
+            : '100dvh'
+          : '100dvh',
+        maxHeight: isChatActive
+          ? viewportHeight
+            ? `${viewportHeight}px`
+            : '100dvh'
+          : undefined,
         width: '100%',
-        position: 'relative',
+        position: isChatActive ? 'fixed' : 'relative',
+        top: isChatActive ? 0 : undefined,
+        left: isChatActive ? 0 : undefined,
+        right: isChatActive ? 0 : undefined,
+        bottom: isChatActive ? 0 : undefined,
         display: 'flex',
         flexDirection: 'column',
         overflow: isChatActive ? 'hidden' : 'visible',
@@ -117,7 +156,6 @@ export default function StrangerChatPage() {
       <ClassyHeader
         currentUser={currentUser}
         currentUserGeo={currentUserGeo}
-        onRefreshIdentity={handleRefreshIdentity}
         activeState={matchStatus}
         onlineCount={Math.max(1, onlineUserIds.size)}
       />
@@ -144,6 +182,7 @@ export default function StrangerChatPage() {
               selectedTopic={selectedTopic}
               onSelectTopic={setSelectedTopic}
               onStartPulse={handleStartPulse}
+              initialNickname={currentUser?.username || ''}
             />
           )}
 

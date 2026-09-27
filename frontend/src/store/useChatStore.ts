@@ -58,6 +58,7 @@ interface ChatState {
   // Actions
   initAuth: () => Promise<void>;
   authAsStranger: () => Promise<User | null>;
+  updateNickname: (nickname: string) => Promise<User | null>;
   login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string, fullName: string) => Promise<void>;
   logout: () => void;
@@ -140,6 +141,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ isLoading: false });
       return null;
     }
+  },
+
+  updateNickname: async (nickname: string) => {
+    const trimmed = nickname.trim();
+    if (!trimmed) return get().currentUser;
+    try {
+      const res = await api.updateProfile({ username: trimmed });
+      if (res?.user) {
+        set({
+          currentUser: res.user,
+          token: res.accessToken || get().token,
+        });
+        return res.user;
+      }
+    } catch (err) {
+      console.error('Failed to update nickname', err);
+    }
+    return get().currentUser;
   },
 
   setupSocketListeners: () => {

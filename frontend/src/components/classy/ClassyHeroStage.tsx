@@ -21,15 +21,20 @@ export const CLASSY_TOPICS: ClassyTopic[] = [
 interface ClassyHeroStageProps {
   selectedTopic?: string;
   onSelectTopic?: (topicId: string) => void;
-  onStartPulse: () => void;
+  onStartPulse: (nickname?: string) => void;
   isStarting?: boolean;
+  initialNickname?: string;
 }
 
 export const ClassyHeroStage: React.FC<ClassyHeroStageProps> = ({
   onStartPulse,
   isStarting = false,
+  initialNickname = '',
 }) => {
   const [timeStr, setTimeStr] = useState('');
+  const [nickname, setNickname] = useState(
+    initialNickname && !initialNickname.startsWith('Stranger_') ? initialNickname : '',
+  );
 
   // Live UTC/world clock ticker
   useEffect(() => {
@@ -50,12 +55,12 @@ export const ClassyHeroStage: React.FC<ClassyHeroStageProps> = ({
       }
       if (e.code === 'Space' || e.key === 'Enter') {
         e.preventDefault();
-        onStartPulse();
+        onStartPulse(nickname);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onStartPulse]);
+  }, [onStartPulse, nickname]);
 
   const lineVariants: Variants = {
     hidden: { opacity: 0, y: 35, skewY: 1.5 },
@@ -153,6 +158,50 @@ export const ClassyHeroStage: React.FC<ClassyHeroStageProps> = ({
           No accounts, no surveillance, no social baggage. Just click and connect.
         </motion.p>
 
+        {/* Minimalist Identity Input (Choose a nickname or stay Stranger) */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.54, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="hero-identity-box"
+        >
+          <div className="hero-identity-input-wrap">
+            <span className="material-symbols-outlined hero-identity-icon">badge</span>
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  onStartPulse(nickname);
+                }
+              }}
+              placeholder="Pick a name / nickname (optional)"
+              maxLength={24}
+              className="hero-identity-input"
+            />
+            {nickname.trim() && (
+              <button
+                type="button"
+                onClick={() => setNickname('')}
+                className="hero-identity-clear"
+                title="Reset to Stranger"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="hero-identity-status">
+            <span className="hero-identity-dot" />
+            <span className="hero-identity-hint">
+              {nickname.trim()
+                ? `You will appear as: ${nickname.trim()}`
+                : 'Staying anonymous as Stranger'}
+            </span>
+          </div>
+        </motion.div>
+
         {/* Main Kinetic Action Area */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -162,7 +211,7 @@ export const ClassyHeroStage: React.FC<ClassyHeroStageProps> = ({
         >
           <button
             type="button"
-            onClick={onStartPulse}
+            onClick={() => onStartPulse(nickname)}
             disabled={isStarting}
             className="hero-primary-trigger"
           >

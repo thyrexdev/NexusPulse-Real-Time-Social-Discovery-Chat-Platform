@@ -224,14 +224,13 @@ button, input, textarea {
   color: var(--text-secondary);
   font-size: 0.76rem;
   font-weight: 500;
-  cursor: pointer;
+  user-select: none;
   transition: all var(--transition-fast);
 }
 
 .classy-user-chip:hover {
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
   border-color: var(--border-medium);
+  color: var(--text-primary);
 }
 
 .classy-header-right-actions {
@@ -372,6 +371,90 @@ button, input, textarea {
   max-width: 560px;
   margin-bottom: 44px;
   font-weight: 400;
+}
+
+/* Minimalist Identity Input Box */
+.hero-identity-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.hero-identity-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition-fast);
+}
+
+.hero-identity-input-wrap:focus-within {
+  border-color: var(--accent-border);
+  background: var(--bg-surface-elevated);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.hero-identity-icon {
+  font-size: 19px;
+  color: var(--accent-primary);
+  opacity: 0.9;
+}
+
+.hero-identity-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+}
+
+.hero-identity-input::placeholder {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.hero-identity-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 0.82rem;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition-fast);
+}
+
+.hero-identity-clear:hover {
+  color: var(--text-primary);
+}
+
+.hero-identity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 2px;
+}
+
+.hero-identity-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  opacity: 0.8;
+}
+
+.hero-identity-hint {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 /* CTA Action Area */
@@ -980,8 +1063,15 @@ kbd {
   .hero-monumental-text {
     font-size: clamp(2.4rem, 11vw, 4.2rem);
   }
+  .hero-identity-box {
+    max-width: 100%;
+  }
+  .classy-input-field,
+  .hero-identity-input {
+    font-size: 16px !important; /* CRITICAL: Prevents iOS Safari auto-zoom on mobile inputs */
+  }
   .classy-chat-container {
-    padding: 70px 12px 14px;
+    padding: 64px 10px 8px;
   }
   .classy-msg-row {
     max-width: 90%;
@@ -993,11 +1083,11 @@ kbd {
     padding: 0 12px;
   }
   .classy-chat-container {
-    padding: 60px 8px 6px;
+    padding: 58px 8px 4px;
   }
   .classy-chat-header {
-    padding: 8px 12px;
-    margin-bottom: 6px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
   }
   .classy-bottom-dock {
     padding-top: 4px;
@@ -1022,8 +1112,9 @@ kbd {
   .classy-input-form-inner {
     padding: 4px 6px 4px 10px;
   }
-  .classy-input-field {
-    font-size: 0.86rem;
+  .classy-input-field,
+  .hero-identity-input {
+    font-size: 16px !important;
   }
   .hero-features-footer {
     display: none;
