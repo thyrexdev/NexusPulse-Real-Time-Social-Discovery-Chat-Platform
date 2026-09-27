@@ -715,6 +715,26 @@ button, input, textarea {
   gap: 6px;
 }
 
+.classy-partner-highlight-name {
+  color: var(--accent-hover);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.classy-partner-geo-tag {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.classy-msg-sender-header {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-bottom: 3px;
+  padding-left: 2px;
+}
+
 .classy-partner-sub {
   font-size: 0.76rem;
   color: var(--text-muted);

@@ -67,8 +67,8 @@ export default function StrangerChatPage() {
       return {
         id: m.id,
         sender: isMe ? 'me' : 'partner',
-        senderName: isMe ? 'You' : activePeer?.username || 'Stranger',
-        avatar: isMe ? currentUser?.avatar || undefined : activePeer?.avatar || undefined,
+        senderName: isMe ? 'You' : (m as any).sender?.username || activePeer?.username || 'Stranger',
+        avatar: isMe ? currentUser?.avatar || undefined : (m as any).sender?.avatar || activePeer?.avatar || undefined,
         timestamp: timeStr,
         content: m.content,
       };

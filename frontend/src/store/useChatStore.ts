@@ -153,6 +153,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
           currentUser: res.user,
           token: res.accessToken || get().token,
         });
+        if (res.accessToken) {
+          socketManager.disconnect();
+          get().setupSocketListeners();
+        }
         return res.user;
       }
     } catch (err) {

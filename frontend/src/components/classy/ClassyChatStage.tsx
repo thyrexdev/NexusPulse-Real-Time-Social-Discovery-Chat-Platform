@@ -27,6 +27,14 @@ interface ClassyChatStageProps {
   isPartnerTyping?: boolean;
 }
 
+export const isStrangerName = (name?: string | null): boolean => {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'stranger') return true;
+  if (/^stranger_\d+$/i.test(trimmed)) return true;
+  return false;
+};
+
 export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
   topic,
   partnerName,
@@ -45,6 +53,8 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isCustomName = !isStrangerName(partnerName);
 
   // Umingle/Omegle Fast Skip keyboard shortcut (Esc)
   useEffect(() => {
@@ -133,8 +143,19 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
           </div>
           <div>
             <div className="classy-partner-name">
-              <span>Stranger from {partnerCountry}</span>
-              <span>{partnerFlag}</span>
+              {isCustomName ? (
+                <>
+                  <span className="classy-partner-highlight-name">{partnerName}</span>
+                  <span className="classy-partner-geo-tag">
+                    • from {partnerCountry} {partnerFlag}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>Stranger from {partnerCountry}</span>
+                  <span>{partnerFlag}</span>
+                </>
+              )}
             </div>
             <div className="classy-partner-sub">
               <span className="classy-online-dot" />
@@ -162,6 +183,8 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
         <AnimatePresence initial={false}>
           {messages.map((m) => {
             const isMe = m.sender === 'me';
+            const authorName = m.senderName || partnerName;
+            const hasCustomAuthor = !isStrangerName(authorName);
             return (
               <motion.div
                 key={m.id}
@@ -190,6 +213,11 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
                 )}
 
                 <div>
+                  {!isMe && hasCustomAuthor && (
+                    <div className="classy-msg-sender-header">
+                      {authorName}
+                    </div>
+                  )}
                   <div className={isMe ? 'classy-msg-bubble-me' : 'classy-msg-bubble-partner'}>
                     {m.content}
                   </div>
@@ -212,7 +240,7 @@ export const ClassyChatStage: React.FC<ClassyChatStageProps> = ({
             <span className="typing-dot" />
             <span className="typing-dot" />
             <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginLeft: '6px' }}>
-              typing...
+              {isCustomName ? `${partnerName} is typing...` : 'typing...'}
             </span>
           </motion.div>
         )}
